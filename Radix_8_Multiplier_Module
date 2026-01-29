@@ -1,0 +1,64 @@
+module radix_8_mul (
+    input wire clk,
+    input wire rst,
+    input wire [31:0] a,
+    input wire [31:0] b,
+    input wire start,
+    output reg [63:0] result,
+    output reg done
+);
+
+    reg [63:0] a_reg;     // extended multiplicand
+    reg [31:0] b_reg;     // multiplier
+    reg [63:0] sum_reg;   // accumulator
+    reg [4:0]  count;     // needs up to 11 cycles
+    reg busy;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            a_reg   <= 64'b0;
+            b_reg   <= 32'b0;
+            sum_reg <= 64'b0;
+            count   <= 5'b0;
+            busy    <= 1'b0;
+            result  <= 64'b0;
+            done    <= 1'b0;
+        end else begin
+            done <= 1'b0;
+
+            // Start multiplication
+            if (start && !busy) begin
+                a_reg   <= {32'b0, a};
+                b_reg   <= b;
+                sum_reg <= 64'b0;
+                count   <= 5'b0;
+                busy    <= 1'b1;
+            end
+            else if (busy) begin
+                // Radix-8 partial product selection
+                case (b_reg[2:0])
+                    3'b000: sum_reg <= sum_reg;
+                    3'b001: sum_reg <= sum_reg + a_reg;
+                    3'b010: sum_reg <= sum_reg + (a_reg << 1);
+                    3'b011: sum_reg <= sum_reg + a_reg + (a_reg << 1);
+                    3'b100: sum_reg <= sum_reg + (a_reg << 2);
+                    3'b101: sum_reg <= sum_reg + (a_reg << 2) + a_reg;
+                    3'b110: sum_reg <= sum_reg + (a_reg << 2) + (a_reg << 1);
+                    3'b111: sum_reg <= sum_reg + (a_reg << 2) + (a_reg << 1) + a_reg;
+                endcase
+
+                // Shift for next iteration
+                a_reg <= a_reg << 3;
+                b_reg <= b_reg >> 3;
+                count <= count + 1;
+
+                // Finish after 11 cycles
+                if (count == 5'd10) begin
+                    busy   <= 1'b0;
+                    result <= sum_reg;
+                    done   <= 1'b1;
+                end
+            end
+        end
+    end
+endmodule
